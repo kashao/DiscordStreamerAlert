@@ -53,6 +53,21 @@ class DBManager:
             INSERT OR REPLACE INTO streamers (twitch_name, last_notified_at) 
             VALUES (?, ?)
         ''', (twitch_name, last_notified_at))
+        self.conn.commit()    
+    
+    def add_server_channel(self, server_id, channel_id):
+        cur = self.conn.cursor()
+        cur.execute("""
+            INSERT INTO servers_channels (server_id, channel_id)
+            VALUES (?, ?)
+        """, (server_id, channel_id))
+        self.conn.commit()
+
+    def remove_server_channel(self, server_id, channel_id):
+        cur = self.conn.cursor()
+        cur.execute("""
+            DELETE FROM servers_channels WHERE server_id = ? AND channel_id = ?
+        """, (server_id, channel_id))
         self.conn.commit()
 
     def create_tables(self):
@@ -67,6 +82,12 @@ class DBManager:
             CREATE TABLE IF NOT EXISTS commands (
                 command TEXT PRIMARY KEY,
                 response TEXT
+            )
+        ''')
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS servers_channels (
+                server_id INTEGER,
+                channel_id INTEGER
             )
         ''')
         self.conn.commit()
@@ -136,15 +157,11 @@ class TwitchBot:
         }
         self.twitch = await Twitch(self.cfg['twitch']['client_id'], self.cfg['twitch']['client_secret'])
         try:
-            print(user)
             user_info = await first(self.twitch.get_users(logins=user))
             userid = user_info.id
-            print(userid)
             url = self.cfg['twitch']['user_api'].format(userid)
-            print(url)
             req = requests.Session().get(url, headers=api_headers)
             jsondata = req.json()
-            print(jsondata)
             if 'error' in jsondata and jsondata['message'] == 'Invalid OAuth token':
                 access_token = self.fetch_new_token()  # regenerate the token
                 api_headers['Authorization'] = f"Bearer {access_token}"  # update the headers
@@ -179,6 +196,8 @@ class DiscordBot:
         self.list_streamers_command()
         self.add_command_command()
         self.remove_command_command()
+        self.add_server_channel_command()
+        self.remove_server_channel_command()
 
         # 自定義幫助指令
         self.bot.help_command = self.CustomHelpCommand()
@@ -227,6 +246,26 @@ class DiscordBot:
             if command in self.commands_dict:
                 del self.commands_dict[command]
             await ctx.send(f"Command {command} removed.")
+
+    def add_server_channel_command(self):
+        @self.bot.command(name='addserverchannel')
+        @commands.has_permissions(administrator=True)
+        async def add_server_channel(ctx):
+            """Add a server and a channel to the list."""
+            server_id = ctx.guild.id
+            channel_id = ctx.channel.id
+            self.db_manager.add_server_channel(server_id, channel_id)
+            await ctx.send(f"Server {server_id} and channel {channel_id} added to the list.")
+
+    def remove_server_channel_command(self):
+        @self.bot.command(name='removeserverchannel')
+        @commands.has_permissions(administrator=True)
+        async def remove_server_channel(ctx):
+            """Remove a server and its channels from the list."""
+            server_id = ctx.guild.id
+            channel_id = ctx.channel.id
+            self.db_manager.remove_server_channel(server_id, channel_id)
+            await ctx.send(f"Server {server_id} and its channels removed from the list.")
 
     async def _live_notifs_loop(self):
         streamers = self.db_manager.list_streamers()
