@@ -52,9 +52,6 @@ twitch:
   user_api: https://api.twitch.tv/helix/users?id={}
   stream_url: https://www.twitch.tv/{}
 
-discord:
-  channel: YOUR_DISCORD_CHANNEL_ID
-
 connection:
   Discord bot token: YOUR_DISCORD_BOT_TOKEN
 ```
